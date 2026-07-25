@@ -1,36 +1,69 @@
 const { Client } = require('discord.js-selfbot-v13');
-const client = new Client(); 
-const express = require("express")
+const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const express = require("express");
+
+const client = new Client();
 const app = express();
+
 var listener = app.listen(process.env.PORT || 2000, function () {
   console.log('Your app is listening on port ' + listener.address().port);
 });
-app.listen(() => console.log("I'm Ready To Work..! 24H"));
+
 app.get('/', (req, res) => {
   res.send(`
   <body>
-  <center><h1>Bot 24H ON!</h1></center
-  </body>`)
+  <center><h1>Bot 24H ON!</h1></center>
+  </body>`);
 });
-client.on('ready', async () => {
-  console.log(`${client.user.username} is ready!`);
-})
-//ثبات فويس 24 ساعه v13 بدون اي مشاكل
-const { joinVoiceChannel } = require('@discordjs/voice');
+
+let voiceConnection = null;
+
+async function joinVoice() {
+  try {
+    const channel = await client.channels.fetch(process.env.channel);
+    if (!channel) {
+      console.log('القناة غير موجودة');
+      return;
+    }
+
+    // إذا في اتصال قديم، نمسحه
+    if (voiceConnection) {
+      voiceConnection.destroy();
+      voiceConnection = null;
+    }
+
+    voiceConnection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: process.env.guild,
+      selfMute: false,
+      selfDeaf: false,
+      adapterCreator: channel.guild.voiceAdapterCreator
+    });
+
+    await entersState(voiceConnection, VoiceConnectionStatus.Ready, 30_000);
+    console.log('دخل الروم الصوتي بنجاح');
+
+    // لو انفصل، نعيد الدخول
+    voiceConnection.on(VoiceConnectionStatus.Disconnected, async () => {
+      console.log('انفصل من الروم... جاري إعادة الدخول');
+      try {
+        await entersState(voiceConnection, VoiceConnectionStatus.Connecting, 5_000);
+      } catch {
+        voiceConnection.destroy();
+        voiceConnection = null;
+        setTimeout(joinVoice, 2000);
+      }
+    });
+
+  } catch (error) {
+    console.log('خطأ في الدخول للروم:', error.message);
+    setTimeout(joinVoice, 5000);
+  }
+}
+
 client.on('ready', () => {
-    
-    setInterval( async () => {
-    client.channels.fetch(process.env.channel) 
-     .then((channel) => { 
-      const VoiceConnection = joinVoiceChannel({
-       channelId: channel.id, 
-       guildId: process.env.guild, 
-       selfMute: false,
-       selfDeaf: false,
-       adapterCreator: channel.guild.voiceAdapterCreator 
-       });
-    }).catch((error) => { return; });
-    }, 1000)
-}); 
-//https://ra3dstudio.com CopyRight Codes
+  console.log(`${client.user.username} is ready!`);
+  joinVoice();
+});
+
 client.login(process.env.token);
